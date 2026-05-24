@@ -18,9 +18,11 @@ if (( CANARY_WEIGHT < 0 || CANARY_WEIGHT > 100 )); then
 fi
 
 STABLE_WEIGHT=$((100 - CANARY_WEIGHT))
+
+# DNS record name should end with a dot
 RECORD_NAME="${RECORD_NAME%.}."
-STABLE_TARGET="${STABLE_TARGET%.}."
-CANARY_TARGET="${CANARY_TARGET%.}."
+
+# Targets are public IPv4 addresses. Do NOT add trailing dots.
 CHANGE_FILE="$(mktemp)"
 
 cat > "$CHANGE_FILE" <<JSON
@@ -31,7 +33,7 @@ cat > "$CHANGE_FILE" <<JSON
       "Action": "UPSERT",
       "ResourceRecordSet": {
         "Name": "$RECORD_NAME",
-        "Type": "CNAME",
+        "Type": "A",
         "SetIdentifier": "stable",
         "Weight": $STABLE_WEIGHT,
         "TTL": 30,
@@ -44,7 +46,7 @@ cat > "$CHANGE_FILE" <<JSON
       "Action": "UPSERT",
       "ResourceRecordSet": {
         "Name": "$RECORD_NAME",
-        "Type": "CNAME",
+        "Type": "A",
         "SetIdentifier": "canary",
         "Weight": $CANARY_WEIGHT,
         "TTL": 30,
@@ -64,4 +66,3 @@ aws route53 change-resource-record-sets \
 rm -f "$CHANGE_FILE"
 
 echo "Route 53 updated: stable=$STABLE_WEIGHT canary=$CANARY_WEIGHT record=$RECORD_NAME"
-
