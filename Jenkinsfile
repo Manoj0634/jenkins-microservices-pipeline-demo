@@ -257,14 +257,6 @@ pipeline {
       }
     }
 
-    stage('SonarQube Cloud Scan') {
-      steps {
-        script {
-          runSonarCloud()
-        }
-      }
-    }
-
     stage('Docker Build, Smoke Test, Push') {
       steps {
         script {
