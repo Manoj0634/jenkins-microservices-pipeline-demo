@@ -302,13 +302,11 @@ pipeline {
               "CANARY_HOST=${CANARY_HOST}",
               "CANARY_WEIGHT_EFFECTIVE=${canaryWeight}"
             ]) {
-              sshagent(credentials: [env.SSH_CREDENTIALS_ID]) {
-                sh '''
+              sh '''
                   chmod +x deploy/scripts/deploy_ec2.sh
                   deploy/scripts/deploy_ec2.sh "$SERVICE_NAME" "$IMAGE_URI" "$DEPLOY_MODE" "$CONTAINER_PORT" "$PUBLIC_PORT" "$AWS_REGION_PARAM"
                 '''
-              }
-
+              
               sh '''
                 chmod +x deploy/scripts/update_route53_weighted.sh
                 deploy/scripts/update_route53_weighted.sh "$HOSTED_ZONE_ID" "$DNS_NAME" "$STABLE_TARGET" "$CANARY_TARGET" "$CANARY_WEIGHT_EFFECTIVE"
