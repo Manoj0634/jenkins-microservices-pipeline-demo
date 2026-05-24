@@ -33,7 +33,9 @@ esac
 for HOST in "${TARGETS[@]}"; do
   echo "Deploying $SERVICE_NAME to $HOST using image $IMAGE_URI"
 
-  ssh -o StrictHostKeyChecking=no "$SSH_USER@$HOST" "bash -s" -- "$SERVICE_NAME" "$IMAGE_URI" "$CONTAINER_PORT" "$PUBLIC_PORT" "$AWS_REGION" <<'REMOTE'
+  ssh -i /var/lib/jenkins/.ssh/app_ec2_deploy_key \
+  -o StrictHostKeyChecking=no \
+  "$SSH_USER@$HOST" "bash -s" -- "$SERVICE_NAME" "$IMAGE_URI" "$CONTAINER_PORT" "$PUBLIC_PORT" "$AWS_REGION" <<'REMOTE'
 set -euo pipefail
 
 SERVICE_NAME="$1"
