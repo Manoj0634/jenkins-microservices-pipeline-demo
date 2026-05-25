@@ -19,7 +19,7 @@ fi
 
 case "$DEPLOY_MODE" in
   stable)
-    TARGETS=("$STABLE_HOST" "$CANARY_HOST")
+    TARGETS=("$STABLE_HOST")
     ;;
   canary)
     TARGETS=("$CANARY_HOST")
@@ -34,8 +34,8 @@ for HOST in "${TARGETS[@]}"; do
   echo "Deploying $SERVICE_NAME to $HOST using image $IMAGE_URI"
 
   ssh -i /var/lib/jenkins/.ssh/app_ec2_deploy_key \
-  -o StrictHostKeyChecking=no \
-  "$SSH_USER@$HOST" "bash -s" -- "$SERVICE_NAME" "$IMAGE_URI" "$CONTAINER_PORT" "$PUBLIC_PORT" "$AWS_REGION" <<'REMOTE'
+    -o StrictHostKeyChecking=no \
+    "$SSH_USER@$HOST" "bash -s" -- "$SERVICE_NAME" "$IMAGE_URI" "$CONTAINER_PORT" "$PUBLIC_PORT" "$AWS_REGION" <<'REMOTE'
 set -euo pipefail
 
 SERVICE_NAME="$1"
@@ -51,6 +51,7 @@ fi
 
 sudo docker pull "$IMAGE_URI"
 sudo docker rm -f "$SERVICE_NAME" >/dev/null 2>&1 || true
+
 sudo docker run -d \
   --restart unless-stopped \
   --name "$SERVICE_NAME" \
@@ -61,4 +62,3 @@ sleep 3
 sudo docker ps --filter "name=^/${SERVICE_NAME}$"
 REMOTE
 done
-
