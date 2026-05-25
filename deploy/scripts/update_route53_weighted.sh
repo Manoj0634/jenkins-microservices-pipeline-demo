@@ -18,11 +18,7 @@ if (( CANARY_WEIGHT < 0 || CANARY_WEIGHT > 100 )); then
 fi
 
 STABLE_WEIGHT=$((100 - CANARY_WEIGHT))
-
-# DNS record name should end with a dot
 RECORD_NAME="${RECORD_NAME%.}."
-
-# Targets are public IPv4 addresses. Do NOT add trailing dots.
 CHANGE_FILE="$(mktemp)"
 
 cat > "$CHANGE_FILE" <<JSON
