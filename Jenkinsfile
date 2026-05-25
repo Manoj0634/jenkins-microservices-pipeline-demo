@@ -95,22 +95,12 @@ def runSonarCloud() {
 def buildAndPushImage(String serviceName, Map cfg, String imageTag) {
   def accountId = sh(returnStdout: true, script: 'aws sts get-caller-identity --query Account --output text').trim()
   def registry = "${accountId}.dkr.ecr.${params.AWS_REGION}.amazonaws.com"
-
-  /*
-   Your ECR repositories are:
-   springboot-api
-   node-api
-   static-site
-
-   So repository name should be serviceName directly.
-  */
   def repository = serviceName
 
   def remoteImage = "${registry}/${repository}:${imageTag}"
   def latestImage = "${registry}/${repository}:latest"
 
   sh "aws ecr describe-repositories --region ${params.AWS_REGION} --repository-names ${repository}"
-
   sh "aws ecr get-login-password --region ${params.AWS_REGION} | docker login --username AWS --password-stdin ${registry}"
 
   dir(cfg.path) {
@@ -194,8 +184,8 @@ pipeline {
 
     choice(
       name: 'DEPLOY_MODE',
-      choices: ['none', 'stable', 'canary'],
-      description: 'none only builds, stable deploys to both EC2 hosts, canary deploys only to canary host.'
+      choices: ['none', 'canary', 'stable', 'rollback'],
+      description: 'none=build only, canary=deploy to canary and shift traffic, stable=promote to stable, rollback=route all traffic back to stable without deploying.'
     )
 
     string(
@@ -219,7 +209,6 @@ pipeline {
 
   environment {
     SONARQUBE_ENV = 'SonarQubeCloud'
-    SSH_CREDENTIALS_ID = 'app-ec2-ssh-key'
   }
 
   stages {
@@ -258,6 +247,10 @@ pipeline {
     }
 
     stage('Docker Build, Smoke Test, Push') {
+      when {
+        expression { params.DEPLOY_MODE != 'rollback' }
+      }
+
       steps {
         script {
           def services = serviceCatalog()
@@ -281,7 +274,24 @@ pipeline {
           def services = serviceCatalog()
           def serviceName = selectedServices[0]
           def cfg = services[serviceName]
-          def canaryWeight = params.DEPLOY_MODE == 'canary' ? params.CANARY_WEIGHT : '0'
+
+          def effectiveCanaryWeight = '0'
+          def shouldDeployToEc2 = false
+          def deployModeForScript = params.DEPLOY_MODE
+
+          if (params.DEPLOY_MODE == 'canary') {
+            effectiveCanaryWeight = params.CANARY_WEIGHT
+            shouldDeployToEc2 = true
+            deployModeForScript = 'canary'
+          } else if (params.DEPLOY_MODE == 'stable') {
+            effectiveCanaryWeight = '0'
+            shouldDeployToEc2 = true
+            deployModeForScript = 'stable'
+          } else if (params.DEPLOY_MODE == 'rollback') {
+            effectiveCanaryWeight = '0'
+            shouldDeployToEc2 = false
+            deployModeForScript = 'rollback'
+          }
 
           withCredentials([
             string(credentialsId: 'stable-host', variable: 'STABLE_HOST'),
@@ -293,20 +303,24 @@ pipeline {
           ]) {
             withEnv([
               "SERVICE_NAME=${serviceName}",
-              "IMAGE_URI=${imageUris[serviceName]}",
-              "DEPLOY_MODE=${params.DEPLOY_MODE}",
+              "IMAGE_URI=${imageUris[serviceName] ?: ''}",
+              "DEPLOY_MODE_FOR_SCRIPT=${deployModeForScript}",
               "CONTAINER_PORT=${cfg.containerPort}",
               "PUBLIC_PORT=${params.PUBLIC_PORT}",
               "AWS_REGION_PARAM=${params.AWS_REGION}",
               "STABLE_HOST=${STABLE_HOST}",
               "CANARY_HOST=${CANARY_HOST}",
-              "CANARY_WEIGHT_EFFECTIVE=${canaryWeight}"
+              "CANARY_WEIGHT_EFFECTIVE=${effectiveCanaryWeight}"
             ]) {
-              sh '''
+              if (shouldDeployToEc2) {
+                sh '''
                   chmod +x deploy/scripts/deploy_ec2.sh
-                  deploy/scripts/deploy_ec2.sh "$SERVICE_NAME" "$IMAGE_URI" "$DEPLOY_MODE" "$CONTAINER_PORT" "$PUBLIC_PORT" "$AWS_REGION_PARAM"
+                  deploy/scripts/deploy_ec2.sh "$SERVICE_NAME" "$IMAGE_URI" "$DEPLOY_MODE_FOR_SCRIPT" "$CONTAINER_PORT" "$PUBLIC_PORT" "$AWS_REGION_PARAM"
                 '''
-              
+              } else {
+                echo 'Rollback selected. Skipping Docker build/deploy. Updating Route 53 to stable=100 and canary=0 only.'
+              }
+
               sh '''
                 chmod +x deploy/scripts/update_route53_weighted.sh
                 deploy/scripts/update_route53_weighted.sh "$HOSTED_ZONE_ID" "$DNS_NAME" "$STABLE_TARGET" "$CANARY_TARGET" "$CANARY_WEIGHT_EFFECTIVE"
